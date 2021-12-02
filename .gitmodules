@@ -1,6 +1,3 @@
 [submodule "themes/ghostwriter"]
 	path = themes/ghostwriter
 	url = https://github.com/Sir-Thomas/ghostwriter.git
-[submodule "public"]
-	path = public
-	url = git@github.com:Sir-Thomas/Sir-Thomas.github.io.git
