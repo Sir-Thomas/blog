@@ -1,0 +1,53 @@
+---
+title: "Nix Database Corruption"
+date: 2026-11-20T23:06:52-06:00
+draft: false
+---
+
+== Situation
+
+I was met with the following error message one day while attempting to run a `nixos-rebuild` command:
+
+[source,bash]
+----
+error: executing SQLite query 'select id, hash, registrationTime, deriver, narSize, ultimate, sigs, ca from ValidPaths where path = '/nix/store/gwyhxd3fz6plg89bzbvkp21lbyncpxin-syn-2.0.111.drv';': database disk image is malformed, database disk image is malformed (in '/nix/var/nix/db/db.sqlite')
+----
+
+My computer has been having issues for a while, and it looks like it finally had a more major one.
+The database corruption prevents me from applying any changes from my nixos config, so I need to get it fixed quickly.
+Until it is fixed, I can't install any new programs or change system configuration.
+
+== Fix Attempt 1
+
+My initial thought was to try to recover the database.
+The following commands were my attempt at that:
+
+[source,bash]
+----
+# Stop NixOS service 
+sudo systemctl stop nix-daemon.socket nix-daemon.service
+# Take a backup
+sudo cp -a /nix/var/nix/db /nix/var/nix/db-backup
+# Remove the old sqlite database
+sudo mv /nix/var/nix/db/db.sqlite /nix/var/nix/db/db.sqlite.corrupt
+# Recover the database
+sudo sqlite3 /nix/var/nix/db/db.sqlite.corrupt ".recover" | sudo sqlite3 /nix/var/nix/db/db.sqlite "PRAGMA integrity_check;"
+# Restart service
+sudo systemctl start nix-daemon.socket nix-daemon.service
+# Check if it worked
+sudo nix-store --verify --check-contents
+----
+
+Unfortunately, this didn't work.
+The integrity check succeeded, but NixOS commands now gave me a new error:
+
+[source,bash]
+----
+error: creating statement 'insert into ValidPaths (path, hash, registrationTime, deriver, narSize, ultimate, sigs, ca) values (?, ?, ?, ?, ?, ?, ?, ?);': SQL logic error, no such table: ValidPaths (in '/nix/var/nix/db/db.sqlite')
+----
+
+== Fix Attempt 2
+
+From here, it seemed like the only course of action would be to rebuild `/nix` completely.
+To do this, I will have to boot into a live iso, so that will have to wait for another day.
+I'll finish the blog post then.
