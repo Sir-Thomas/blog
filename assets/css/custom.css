@@ -1,0 +1,5 @@
+.post-content #toc,
+article #toc,
+main #toc {
+  display: none;
+}
