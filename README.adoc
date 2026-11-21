@@ -1,0 +1,10 @@
+== Tommy's Blog
+
+Just a simple blog.
+I want to write more, so this is a way to make myself do it.
+
+The blog is hosted at https://tommypriest.xyz
+
+=== Development
+
+To preview the blog, run `hugo server -D` in a terminal, then go to http://localhost:1313
