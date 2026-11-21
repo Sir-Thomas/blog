@@ -1,20 +1,20 @@
 ---
 title: "Nix Database Corruption"
-date: 2026-11-20T23:06:52-06:00
+date: 2026-11-21
 draft: false
 ---
 
 == Situation
 
-I was met with the following error message one day while attempting to run a `nixos-rebuild` command:
+I was met with the following error message last week while attempting to run a `nixos-rebuild` command:
 
-[source,bash]
+[source,console]
 ----
 error: executing SQLite query 'select id, hash, registrationTime, deriver, narSize, ultimate, sigs, ca from ValidPaths where path = '/nix/store/gwyhxd3fz6plg89bzbvkp21lbyncpxin-syn-2.0.111.drv';': database disk image is malformed, database disk image is malformed (in '/nix/var/nix/db/db.sqlite')
 ----
 
 My computer has been having issues for a while, and it looks like it finally had a more major one.
-The database corruption prevents me from applying any changes from my nixos config, so I need to get it fixed quickly.
+The database corruption prevents me from applying any changes from my NixOS config, so I need to get it fixed quickly.
 Until it is fixed, I can't install any new programs or change system configuration.
 
 == Fix Attempt 1
@@ -22,9 +22,15 @@ Until it is fixed, I can't install any new programs or change system configurati
 My initial thought was to try to recover the database.
 The following commands were my attempt at that:
 
+[WARNING]
+====
+This recovery command is wrong.
+See <<_incorrect_db_restore_command>> for the corrected version.
+====
+
 [source,bash]
 ----
-# Stop NixOS service 
+# Stop Nix daemon
 sudo systemctl stop nix-daemon.socket nix-daemon.service
 # Take a backup
 sudo cp -a /nix/var/nix/db /nix/var/nix/db-backup
@@ -32,7 +38,7 @@ sudo cp -a /nix/var/nix/db /nix/var/nix/db-backup
 sudo mv /nix/var/nix/db/db.sqlite /nix/var/nix/db/db.sqlite.corrupt
 # Recover the database
 sudo sqlite3 /nix/var/nix/db/db.sqlite.corrupt ".recover" | sudo sqlite3 /nix/var/nix/db/db.sqlite "PRAGMA integrity_check;"
-# Restart service
+# Restart daemon
 sudo systemctl start nix-daemon.socket nix-daemon.service
 # Check if it worked
 sudo nix-store --verify --check-contents
@@ -41,7 +47,7 @@ sudo nix-store --verify --check-contents
 Unfortunately, this didn't work.
 The integrity check succeeded, but NixOS commands now gave me a new error:
 
-[source,bash]
+[source,console]
 ----
 error: creating statement 'insert into ValidPaths (path, hash, registrationTime, deriver, narSize, ultimate, sigs, ca) values (?, ?, ?, ?, ?, ?, ?, ?);': SQL logic error, no such table: ValidPaths (in '/nix/var/nix/db/db.sqlite')
 ----
@@ -49,5 +55,58 @@ error: creating statement 'insert into ValidPaths (path, hash, registrationTime,
 == Fix Attempt 2
 
 From here, it seemed like the only course of action would be to rebuild `/nix` completely.
-To do this, I will have to boot into a live iso, so that will have to wait for another day.
-I'll finish the blog post then.
+Here is my plan:
+
+. Flash a NixOS installer to a USB drive and boot from it
+. Mount my root partition at `/mnt` and boot partition at `/mnt/boot`
+.. I am using btrfs, so I'll need to mount with the following commands:
++
+[source,bash]
+----
+sudo mount -o subvol=@,compress=zstd /dev/nvme1n1p2 /mnt
+sudo mount -o subvol=@home,compress=zstd /dev/nvme1n1p2 /mnt/home
+sudo mount /dev/nvme1n1p1 /mnt/boot
+----
+. Remove the whole `/nix` directory `sudo mv /mnt/nix /mnt/nix.bak`
+. Re-install `sudo nixos-install --no-root-password --flake /mnt/home/tommy/nixos#desktop`
+. Reboot back into NixOS and verify `sudo nix-store --verify --check-contents`
+
+This attempt worked!
+It took longer because it was rebuilding the whole OS, but it fixed the issue.
+
+After testing, be sure to delete `/nix.bak` as it is no longer needed.
+
+== Conclusion
+
+Because NixOS stores all the important stuff in the configurations, it is relatively easy to restore a corrupted install.
+I should, however, still fix my desktop.
+Until I fix the memory corruption issues I've been having, I will continue to encounter problems like this.
+
+== Follow Up
+
+=== Incorrect DB Restore Command
+
+I later found out that the recovery command was wrong and I accidentally created a new, empty database.
+The correct commands were:
+
+[source,bash]
+----
+# Recover the database
+sudo sqlite3 /nix/var/nix/db/db.sqlite.corrupt ".recover" | sudo sqlite3 /nix/var/nix/db/db.sqlite
+# Perform the integrity check separately
+sudo sqlite3 /nix/var/nix/db/db.sqlite "PRAGMA integrity_check;"
+----
+
+Running the original command creates a blank database and then integrity checks that new database, completely discarding the output of the recover command.
+When we split it up this way, the first command will put the piped input into a new database, then we can integrity check it later.
+I tried this version with my backups and it seems to work.
+The recovered database had all the correct tables.
+I didn't test it, so I won't know for sure.
+
+=== BTRFS Scrub
+
+Until I went to mount my partitions on the live ISO, I had forgotten I was using btrfs.
+I could have run `btrfs scrub` to make sure that there were no filesystem issues, but I doubt it would have found anything.
+My desktop has been corrupting memory recently.
+If the database was corrupted in memory before it was written to disk, btrfs would have no way to know that the data was corrupted.
+Still, it would have been a good idea to run this first.
