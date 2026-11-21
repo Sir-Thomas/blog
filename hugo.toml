@@ -1,0 +1,20 @@
+baseURL = 'https://tommypriest.xyz/'
+locale = 'en-us'
+title = "Tommy's Blog"
+theme = 'rusty-typewriter'
+
+[security]
+  [security.exec]
+    allow = [
+      "^(dart-)?sass(-embedded)?$",
+      "^go$",
+      "^npx$",
+      "^postcss$",
+      "^asciidoctor$"
+    ]
+
+[markup]
+  [markup.asciidocExt]
+    preserveTOC = true
+    [markup.asciidocExt.attributes]
+      toc = "auto" # or "preamble" to place it after your intro paragraph
